@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TodoApi.Models;
+using System.Reflection;
 
 namespace TodoApi.Controllers;
 
@@ -25,7 +26,6 @@ public class TodoItemsController : ControllerBase
     }
 
     // GET: api/TodoItems/5
-    // <snippet_GetByID>
     [HttpGet("{id}")]
     public async Task<ActionResult<TodoItemDTO>> GetTodoItem(long id)
     {
@@ -38,11 +38,8 @@ public class TodoItemsController : ControllerBase
 
         return ItemToDTO(todoItem);
     }
-    // </snippet_GetByID>
 
     // PUT: api/TodoItems/5
-    // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-    // <snippet_Update>
     [HttpPut("{id}")]
     public async Task<IActionResult> PutTodoItem(long id, TodoItemDTO todoDTO)
     {
@@ -57,8 +54,8 @@ public class TodoItemsController : ControllerBase
             return NotFound();
         }
 
-        todoItem.Name = todoDTO.Name;
-        todoItem.IsComplete = todoDTO.IsComplete;
+        // копируем свойства DTO → Entity
+        CopyProperties(todoDTO, todoItem);
 
         try
         {
@@ -71,19 +68,21 @@ public class TodoItemsController : ControllerBase
 
         return NoContent();
     }
-    // </snippet_Update>
 
     // POST: api/TodoItems
-    // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-    // <snippet_Create>
     [HttpPost]
     public async Task<ActionResult<TodoItemDTO>> PostTodoItem(TodoItemDTO todoDTO)
     {
-        var todoItem = new TodoItem
+        // 🔍 Логирование свойств DTO через рефлексию
+        foreach (var prop in todoDTO.GetType().GetProperties())
         {
-            IsComplete = todoDTO.IsComplete,
-            Name = todoDTO.Name
-        };
+            Console.WriteLine($"DTO Property: {prop.Name} = {prop.GetValue(todoDTO)}");
+        }
+
+        var todoItem = new TodoItem();
+        
+        // копируем свойства DTO → Entity
+        CopyProperties(todoDTO, todoItem);
 
         _context.TodoItems.Add(todoItem);
         await _context.SaveChangesAsync();
@@ -93,7 +92,6 @@ public class TodoItemsController : ControllerBase
             new { id = todoItem.Id },
             ItemToDTO(todoItem));
     }
-    // </snippet_Create>
 
     // DELETE: api/TodoItems/5
     [HttpDelete("{id}")]
@@ -117,10 +115,27 @@ public class TodoItemsController : ControllerBase
     }
 
     private static TodoItemDTO ItemToDTO(TodoItem todoItem) =>
-       new TodoItemDTO
-       {
-           Id = todoItem.Id,
-           Name = todoItem.Name,
-           IsComplete = todoItem.IsComplete
-       };
+        new TodoItemDTO
+        {
+            Id = todoItem.Id,
+            Name = todoItem.Name,
+            IsComplete = todoItem.IsComplete
+        };
+
+    // копирование свойств с одинаковыми именами
+    private static void CopyProperties(object source, object target)
+    {
+        var sourceProps = source.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        var targetProps = target.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
+
+        foreach (var sProp in sourceProps)
+        {
+            var tProp = targetProps.FirstOrDefault(p => p.Name == sProp.Name &&
+                                                        p.PropertyType == sProp.PropertyType);
+            if (tProp != null && tProp.CanWrite)
+            {
+                tProp.SetValue(target, sProp.GetValue(source));
+            }
+        }
+    }
 }

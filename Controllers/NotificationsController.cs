@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using TodoApi.Models;
 using TodoApi.Services;
+using System.Reflection;
 
 namespace TodoApi.Controllers
 {
@@ -23,26 +24,49 @@ namespace TodoApi.Controllers
         {
             try
             {
-                _logger.LogInformation("Sending notification to chat {ChatId}", message.ChatId);
-                
-                var result = await _telegramService.SendMessageAsync(message.ChatId, message.Message);
-                
-                if (result.Success)
+                // логируем все свойства входящего объекта
+                var messageType = message.GetType();
+                foreach (var prop in messageType.GetProperties())
                 {
-                    return Ok(result);
+                    _logger.LogInformation("Property {Name} = {Value}",
+                        prop.Name, prop.GetValue(message));
                 }
-                else
+
+                // получаем имя контроллера динамически
+                var controllerName = GetType().Name;
+                _logger.LogInformation("Controller {Controller} is processing message", controllerName);
+
+                // вызываем метод SendMessageAsync через MethodInfo.Invoke
+                MethodInfo? method = typeof(ITelegramService)
+                    .GetMethod("SendMessageAsync");
+
+                if (method == null)
                 {
-                    return BadRequest(result);
+                    return StatusCode(500, new SendMessageResult
+                    {
+                        Success = false,
+                        Error = "Reflection error: method SendMessageAsync not found"
+                    });
                 }
+
+                var taskObject = method.Invoke(
+                    _telegramService,
+                    new object[] { message.ChatId, message.Message }
+                );
+
+                // Приводим возвращаемый Task<SendMessageResult>
+                var task = (Task<SendMessageResult>)taskObject!;
+                var result = await task;
+
+                return result.Success ? Ok(result) : BadRequest(result);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error sending notification to chat {ChatId}", message.ChatId);
-                return StatusCode(500, new SendMessageResult 
-                { 
-                    Success = false, 
-                    Error = "Internal server error" 
+                return StatusCode(500, new SendMessageResult
+                {
+                    Success = false,
+                    Error = "Internal server error"
                 });
             }
         }
