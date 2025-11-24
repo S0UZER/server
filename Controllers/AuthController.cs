@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
-using Newtonsoft.Json.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using TodoApi.Models;
+using TodoApi.Services;
 
 namespace TodoApi.Controllers
 {
@@ -10,56 +10,92 @@ namespace TodoApi.Controllers
     [Route("api/[controller]")]
     public class AuthController : ControllerBase
     {
-        private readonly string botToken;
+        private readonly IConfiguration _config;
+        private readonly NonceStorage _nonceStorage;
 
-        public AuthController(IConfiguration config)
+        public AuthController(IConfiguration config, NonceStorage ns)
         {
-            botToken = config["TelegramBot:Token"];
+            _config = config;
+            _nonceStorage = ns;
         }
 
-        [HttpPost("telegram")]
-        public IActionResult TelegramLogin([FromBody] TelegramAuthData payload)
+        // -------------------------
+        // 1) /auth/start
+        // -------------------------
+        [HttpPost("start")]
+        public IActionResult StartAuth()
         {
-            if (payload == null)
-                return BadRequest("Invalid JSON");
+            var nonce = Guid.NewGuid().ToString("N");
 
-            var dataDict = new Dictionary<string, string>
+            _nonceStorage.Add(nonce);
+
+            var redirectUrl = $"{_config["Server:PublicUrl"]}/telegram-login.html?nonce={nonce}";
+
+            return Ok(new StartAuthResponse
             {
-                { "id", payload.Id },
-                { "first_name", payload.FirstName },
-                { "username", payload.Username },
-                { "auth_date", payload.AuthDate },
-                { "hash", payload.Hash }
-            };
+                Nonce = nonce,
+                LoginUrl = redirectUrl
+            });
+        }
 
-            if (!ValidateTelegramData(dataDict))
+
+        // -------------------------
+        // 2) /auth/verify
+        // -------------------------
+        [HttpPost("verify")]
+        public IActionResult Verify([FromBody] AuthVerifyRequest req)
+        {
+            if (!_nonceStorage.Exists(req.Nonce))
+                return Unauthorized("Nonce not found or expired");
+
+            if (!ValidateTelegramData(req.TelegramData))
                 return Unauthorized("Invalid Telegram signature");
+
+            _nonceStorage.Remove(req.Nonce);
+
+            var jwt = GenerateJwt(req.TelegramData.Id);
 
             return Ok(new
             {
                 success = true,
-                telegramId = payload.Id
+                token = jwt
             });
         }
 
-        private bool ValidateTelegramData(Dictionary<string, string> authData)
+
+        private bool ValidateTelegramData(TelegramAuthData data)
         {
-            var checkHash = authData["hash"];
-            authData.Remove("hash");
+            var botToken = _config["TelegramBot:Token"];
+
+            var authDict = new Dictionary<string, string>
+            {
+                { "id", data.Id },
+                { "first_name", data.FirstName },
+                { "username", data.Username },
+                { "auth_date", data.AuthDate }
+            };
 
             var dataCheckString = string.Join("\n",
-                authData.OrderBy(k => k.Key)
-                        .Select(k => $"{k.Key}={k.Value}"));
+                authDict.OrderBy(k => k.Key).Select(k => $"{k.Key}={k.Value}"));
 
             var key = SHA256.HashData(Encoding.UTF8.GetBytes(botToken));
-            var hmac = new HMACSHA256(key);
+            using var hmac = new HMACSHA256(key);
 
-            var hash = BitConverter
-                .ToString(hmac.ComputeHash(Encoding.UTF8.GetBytes(dataCheckString)))
+            var hash = BitConverter.ToString(
+                hmac.ComputeHash(Encoding.UTF8.GetBytes(dataCheckString)))
                 .Replace("-", "")
                 .ToLower();
 
-            return hash == checkHash;
+            return hash == data.Hash;
+        }
+
+
+        private string GenerateJwt(string telegramId)
+        {
+            // простой JWT без ролей, чтобы работало
+            return Convert.ToBase64String(Encoding.UTF8.GetBytes(
+                $"fake-jwt-for-{telegramId}-{Guid.NewGuid()}"
+            ));
         }
     }
 }

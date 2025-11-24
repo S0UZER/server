@@ -1,1 +1,39 @@
-{"Version":1,"Hash":"xdV9kqnt7qg+ScjosU02AwQ1D5ElJDf/XiinDkzjM6k=","Source":"TodoApi","BasePath":"_content/TodoApi","Mode":"Default","ManifestType":"Build","ReferencedProjectsConfiguration":[],"DiscoveryPatterns":[],"Assets":[],"Endpoints":[]}
+{
+  "Version": 1,
+  "Hash": "O+yMZUpuVN4Dxwgcv0Vz5+q9pVYXjrzk8bziWR6ZdqA=",
+  "Source": "TodoApi",
+  "BasePath": "_content/TodoApi",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [
+    {
+      "Name": "TodoApi\\wwwroot",
+      "Source": "TodoApi",
+      "ContentRoot": "C:\\Users\\Bit\\Desktop\\server\\wwwroot\\",
+      "BasePath": "_content/TodoApi",
+      "Pattern": "**"
+    }
+  ],
+  "Assets": [
+    {
+      "Identity": "C:\\Users\\Bit\\Desktop\\server\\wwwroot\\telegram-login.html",
+      "SourceId": "TodoApi",
+      "SourceType": "Discovered",
+      "ContentRoot": "C:\\Users\\Bit\\Desktop\\server\\wwwroot\\",
+      "BasePath": "_content/TodoApi",
+      "RelativePath": "telegram-login.html",
+      "AssetKind": "All",
+      "AssetMode": "All",
+      "AssetRole": "Primary",
+      "AssetMergeBehavior": "PreferTarget",
+      "AssetMergeSource": "",
+      "RelatedAsset": "",
+      "AssetTraitName": "",
+      "AssetTraitValue": "",
+      "CopyToOutputDirectory": "Never",
+      "CopyToPublishDirectory": "PreserveNewest",
+      "OriginalItemSpec": "wwwroot\\telegram-login.html"
+    }
+  ]
+}

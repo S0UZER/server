@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <title>Авторизация через Telegram</title>
+</head>
+<body style="background:#111; color:white; font-family:sans-serif;">
+
+<h2>Авторизация через Telegram</h2>
+
+<div id="tg-login"></div>
+
+<script>
+    // 1) Читаем nonce из URL
+    const url = new URL(window.location.href);
+    const nonce = url.searchParams.get("nonce");
+
+    if (!nonce) {
+        document.body.innerHTML = "<h3>Ошибка: нет nonce</h3>";
+        throw new Error("No nonce");
+    }
+
+    // 2) Создаём Telegram Login Widget корректно
+    const tgScript = document.createElement("script");
+    tgScript.src = "https://telegram.org/js/telegram-widget.js?22";
+    tgScript.async = true;
+    tgScript.setAttribute("data-telegram-login", "subopro_bot");
+    tgScript.setAttribute("data-size", "large");
+    tgScript.setAttribute("data-userpic", "false");
+    tgScript.setAttribute("data-request-access", "write");
+    tgScript.setAttribute("data-lang", "ru");
+    tgScript.setAttribute("data-auth-url", "");
+    tgScript.setAttribute("data-on-auth", "onTelegramAuth");
+
+    document.getElementById("tg-login").appendChild(tgScript);
+
+    // 3) Функция, выполняющаяся после логина
+    async function onTelegramAuth(user) {
+        const payload = {
+            nonce: nonce,
+            telegramData: {
+                id: user.id.toString(),
+                first_name: user.first_name,
+                username: user.username,
+                auth_date: user.auth_date.toString(),
+                hash: user.hash
+            }
+        };
+
+        const response = await fetch("/api/auth/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+
+        const json = await response.json();
+        if (json.token) {
+            document.body.innerHTML =
+                "<h2>Успех!</h2><p>Your JWT:</p><code>" + json.token + "</code>";
+        } else {
+            document.body.innerHTML = "<h3>Ошибка авторизации</h3>";
+        }
+    }
+</script>
+
+</body>
+</html>
