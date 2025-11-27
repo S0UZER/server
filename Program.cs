@@ -1,16 +1,23 @@
 using Microsoft.EntityFrameworkCore;
 using TodoApi.Models;
 using TodoApi.Services;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
-
+using TodoApi.Middleware; // Добавьте эту using директиву
 
 var builder = WebApplication.CreateBuilder(args);
-var jwtSettings = builder.Configuration.GetSection("Jwt");
-var key = Encoding.UTF8.GetBytes(jwtSettings["Key"]);
 
+// Конфигурация JWT - ДОБАВЛЕНА ПРОВЕРКА НА NULL
+var jwtSettings = builder.Configuration.GetSection("Jwt");
+var jwtKey = jwtSettings["Key"];
+if (string.IsNullOrEmpty(jwtKey))
+{
+    throw new ArgumentException("JWT Key is not configured in appsettings.json");
+}
+var key = Encoding.UTF8.GetBytes(jwtKey);
+
+// Аутентификация JWT
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -26,26 +33,29 @@ builder.Services.AddAuthentication(options =>
         ValidateIssuerSigningKey = true,
         ValidIssuer = jwtSettings["Issuer"],
         ValidAudience = jwtSettings["Audience"],
-        IssuerSigningKey = new SymmetricSecurityKey(key)
+        IssuerSigningKey = new SymmetricSecurityKey(key),
+        ClockSkew = TimeSpan.Zero
     };
 });
+
 builder.Services.AddAuthorization();
 
-
+// Настройка хоста
 builder.WebHost.UseUrls("http://localhost:5052");
-// Add services to the container.
 
+// Сервисы
 builder.Services
     .AddControllers()
     .AddNewtonsoftJson();
 
+// Регистрация сервисов
 builder.Services.AddSingleton<NonceStorage>();
+builder.Services.AddScoped<ITelegramService, TelegramService>();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddDbContext<TodoContext>(opt =>
     opt.UseInMemoryDatabase("TodoList"));
-builder.Services.AddScoped<ITelegramService, TelegramService>();
 
 var app = builder.Build();
 
@@ -62,12 +72,11 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseMiddleware<RequestLoggingMiddleware>();
+
 app.UseAuthentication();
-
 app.UseAuthorization();
-
 app.UseStaticFiles();
-
 app.MapControllers();
 
 app.MapGet("/", () => "TodoAPI is running! Go to /swagger");

@@ -1,12 +1,15 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TodoApi.Models;
 using TodoApi.Services;
 using System.Reflection;
+using Microsoft.Extensions.Logging;
 
 namespace TodoApi.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize] // ← Атрибут аутентификации
     public class NotificationsController : ControllerBase
     {
         private readonly ITelegramService _telegramService;
@@ -18,51 +21,45 @@ namespace TodoApi.Controllers
             _logger = logger;
         }
 
-        // POST: api/notifications
+        // POST: api/notifications - теперь требует аутентификации
         [HttpPost]
         public async Task<ActionResult<SendMessageResult>> SendNotification(TelegramMessage message)
         {
             try
             {
-                // логируем все свойства входящего объекта
-                var messageType = message.GetType();
-                foreach (var prop in messageType.GetProperties())
+                if (message == null)
                 {
-                    _logger.LogInformation("Property {Name} = {Value}",
-                        prop.Name, prop.GetValue(message));
+                    return BadRequest(new { error = "Message is required" });
                 }
 
-                // получаем имя контроллера динамически
-                var controllerName = GetType().Name;
-                _logger.LogInformation("Controller {Controller} is processing message", controllerName);
+                // Получаем telegram_id из JWT токена
+                var telegramId = User.FindFirst("telegram_id")?.Value;
+                var deviceId = User.FindFirst("device_id")?.Value;
 
-                // вызываем метод SendMessageAsync через MethodInfo.Invoke
-                MethodInfo? method = typeof(ITelegramService)
-                    .GetMethod("SendMessageAsync");
-
-                if (method == null)
+                if (string.IsNullOrEmpty(telegramId))
                 {
-                    return StatusCode(500, new SendMessageResult
-                    {
-                        Success = false,
-                        Error = "Reflection error: method SendMessageAsync not found"
-                    });
+                    return Unauthorized(new { error = "No telegram_id in token" });
                 }
 
-                var taskObject = method.Invoke(
-                    _telegramService,
-                    new object[] { message.ChatId, message.Message }
-                );
+                _logger.LogInformation(
+                    "Sending notification for user {TelegramId} from device {DeviceId}", 
+                    telegramId, deviceId);
 
-                // Приводим возвращаемый Task<SendMessageResult>
-                var task = (Task<SendMessageResult>)taskObject!;
-                var result = await task;
+                // Преобразуем telegramId в long (chatId)
+                if (!long.TryParse(telegramId, out long userChatId))
+                {
+                    return BadRequest(new { error = "Invalid telegram_id format" });
+                }
+
+                // ВАЖНО: Отправляем сообщение ТОЛЬКО в чат авторизованного пользователя
+                // Игнорируем message.ChatId из запроса для безопасности
+                var result = await _telegramService.SendMessageAsync(userChatId, message.Message);
 
                 return result.Success ? Ok(result) : BadRequest(result);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error sending notification to chat {ChatId}", message.ChatId);
+                _logger.LogError(ex, "Error sending notification");
                 return StatusCode(500, new SendMessageResult
                 {
                     Success = false,
@@ -73,6 +70,7 @@ namespace TodoApi.Controllers
 
         // GET: api/notifications/test
         [HttpGet("test")]
+        [AllowAnonymous] // Публичный endpoint
         public async Task<ActionResult> TestConnection()
         {
             var isConnected = await _telegramService.TestConnectionAsync();
@@ -89,6 +87,7 @@ namespace TodoApi.Controllers
 
         // POST: api/notifications/test-message
         [HttpPost("test-message")]
+        [AllowAnonymous] // Публичный endpoint
         public async Task<ActionResult<SendMessageResult>> SendTestMessage([FromQuery] long chatId)
         {
             var testMessage = $"✅ Test notification from TodoAPI!\n" +

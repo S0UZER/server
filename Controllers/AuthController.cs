@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Cryptography;
 using System.Text;
@@ -6,7 +7,7 @@ using TodoApi.Services;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-
+using Microsoft.Extensions.Logging;
 
 namespace TodoApi.Controllers
 {
@@ -16,24 +17,36 @@ namespace TodoApi.Controllers
     {
         private readonly IConfiguration _config;
         private readonly NonceStorage _nonceStorage;
+        private readonly ILogger<AuthController> _logger;
 
-        public AuthController(IConfiguration config, NonceStorage ns)
+        public AuthController(IConfiguration config, NonceStorage ns, ILogger<AuthController> logger)
         {
             _config = config;
             _nonceStorage = ns;
+            _logger = logger;
         }
 
         // -------------------------
-        // 1) /auth/start
+        // 1) /auth/start - теперь принимает DeviceId
         // -------------------------
         [HttpPost("start")]
-        public IActionResult StartAuth()
+        public IActionResult StartAuth([FromBody] StartAuthRequest request)
         {
+            if (string.IsNullOrEmpty(request?.DeviceId))
+            {
+                return BadRequest(new { error = "DeviceId is required" });
+            }
+
             var nonce = Guid.NewGuid().ToString("N");
+            
+            // Сохраняем nonce с привязкой к DeviceId
+            _nonceStorage.Add(nonce, request.DeviceId);
 
-            _nonceStorage.Add(nonce);
+            var publicUrl = _config["Server:PublicUrl"] ?? "https://localhost:5052";
+            var redirectUrl = $"{publicUrl}/telegram-login.html?nonce={nonce}";
 
-            var redirectUrl = $"{_config["Server:PublicUrl"]}/telegram-login.html?nonce={nonce}";
+            _logger.LogInformation("Auth started for device: {DeviceId}, nonce: {Nonce}", 
+                request.DeviceId, nonce);
 
             return Ok(new StartAuthResponse
             {
@@ -42,45 +55,61 @@ namespace TodoApi.Controllers
             });
         }
 
-
         // -------------------------
-        // 2) /auth/verify
+        // 2) /auth/verify - теперь включает DeviceId в JWT
         // -------------------------
         [HttpPost("verify")]
         public IActionResult Verify([FromBody] AuthVerifyRequest req)
         {
-            if (!_nonceStorage.Exists(req.Nonce))
-                return Unauthorized("Nonce not found or expired");
+            if (req == null)
+            {
+                return BadRequest(new { error = "Request body is required" });
+            }
+
+            if (!_nonceStorage.TryGet(req.Nonce, out string deviceId))
+            {
+                _logger.LogWarning("Invalid or expired nonce: {Nonce}", req.Nonce);
+                return Unauthorized(new { error = "Nonce not found or expired" });
+            }
 
             if (!ValidateTelegramData(req.TelegramData))
-                return Unauthorized("Invalid Telegram signature");
-            Console.WriteLine("RECEIVED:");
-            Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(req));
+            {
+                _logger.LogWarning("Invalid Telegram signature for nonce: {Nonce}", req.Nonce);
+                return Unauthorized(new { error = "Invalid Telegram signature" });
+            }
 
+            _logger.LogInformation("Telegram auth successful for user: {UserId}, device: {DeviceId}", 
+                req.TelegramData.Id, deviceId);
 
             _nonceStorage.Remove(req.Nonce);
 
-            var jwt = GenerateJwt(req.TelegramData.Id);
+            // Генерируем JWT с включением DeviceId
+            var jwt = GenerateJwt(req.TelegramData.Id, deviceId);
 
             return Ok(new
             {
                 success = true,
-                token = jwt
+                token = jwt,
+                telegramId = req.TelegramData.Id,
+                deviceId = deviceId
             });
-
         }
-
 
         private bool ValidateTelegramData(TelegramAuthData data)
         {
+            if (data == null)
+                return false;
+
             var botToken = _config["TelegramBot:Token"];
+            if (string.IsNullOrEmpty(botToken))
+                return false;
 
             var authDict = new Dictionary<string, string>
             {
-                { "id", data.Id },
-                { "first_name", data.FirstName },
-                { "username", data.Username },
-                { "auth_date", data.AuthDate }
+                { "id", data.Id ?? "" },
+                { "first_name", data.FirstName ?? "" },
+                { "username", data.Username ?? "" },
+                { "auth_date", data.AuthDate ?? "" }
             };
 
             var dataCheckString = string.Join("\n",
@@ -97,13 +126,15 @@ namespace TodoApi.Controllers
             return hash == data.Hash;
         }
 
-
-        private string GenerateJwt(string telegramId)
+        private string GenerateJwt(string telegramId, string deviceId)
         {
-            var key = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(_config["Jwt:Key"])
-            );
+            var jwtKey = _config["Jwt:Key"];
+            if (string.IsNullOrEmpty(jwtKey))
+            {
+                throw new ArgumentException("JWT Key is not configured");
+            }
 
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
             var token = new JwtSecurityToken(
@@ -111,10 +142,12 @@ namespace TodoApi.Controllers
                 audience: _config["Jwt:Audience"],
                 claims: new[]
                 {
-                    new Claim("telegram_id", telegramId)
+                    new Claim("telegram_id", telegramId),
+                    new Claim("device_id", deviceId ?? ""),
+                    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
                 },
                 expires: DateTime.UtcNow.AddMinutes(
-                    int.Parse(_config["Jwt:LifetimeMinutes"])
+                    int.Parse(_config["Jwt:LifetimeMinutes"] ?? "60")
                 ),
                 signingCredentials: creds
             );
