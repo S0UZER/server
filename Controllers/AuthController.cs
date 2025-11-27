@@ -3,6 +3,10 @@ using System.Security.Cryptography;
 using System.Text;
 using TodoApi.Models;
 using TodoApi.Services;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+
 
 namespace TodoApi.Controllers
 {
@@ -50,6 +54,9 @@ namespace TodoApi.Controllers
 
             if (!ValidateTelegramData(req.TelegramData))
                 return Unauthorized("Invalid Telegram signature");
+            Console.WriteLine("RECEIVED:");
+            Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(req));
+
 
             _nonceStorage.Remove(req.Nonce);
 
@@ -60,6 +67,7 @@ namespace TodoApi.Controllers
                 success = true,
                 token = jwt
             });
+
         }
 
 
@@ -92,10 +100,26 @@ namespace TodoApi.Controllers
 
         private string GenerateJwt(string telegramId)
         {
-            // простой JWT без ролей, чтобы работало
-            return Convert.ToBase64String(Encoding.UTF8.GetBytes(
-                $"fake-jwt-for-{telegramId}-{Guid.NewGuid()}"
-            ));
+            var key = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(_config["Jwt:Key"])
+            );
+
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+            var token = new JwtSecurityToken(
+                issuer: _config["Jwt:Issuer"],
+                audience: _config["Jwt:Audience"],
+                claims: new[]
+                {
+                    new Claim("telegram_id", telegramId)
+                },
+                expires: DateTime.UtcNow.AddMinutes(
+                    int.Parse(_config["Jwt:LifetimeMinutes"])
+                ),
+                signingCredentials: creds
+            );
+
+            return new JwtSecurityTokenHandler().WriteToken(token);
         }
     }
 }

@@ -11,7 +11,9 @@
 <div id="tg-login"></div>
 
 <script>
+    // ----------------------------
     // 1) Читаем nonce из URL
+    // ----------------------------
     const url = new URL(window.location.href);
     const nonce = url.searchParams.get("nonce");
 
@@ -20,7 +22,15 @@
         throw new Error("No nonce");
     }
 
-    // 2) Создаём Telegram Login Widget корректно
+    // ----------------------------
+    // 2) Конфиг
+    // ----------------------------
+    const API_URL = "https://droopingly-troughlike-dedra.ngrok-free.dev"; 
+    // ВАЖНО: здесь должен быть публичный URL твоего сервера!
+
+    // ----------------------------
+    // 3) Подключаем Telegram Login Widget
+    // ----------------------------
     const tgScript = document.createElement("script");
     tgScript.src = "https://telegram.org/js/telegram-widget.js?22";
     tgScript.async = true;
@@ -29,36 +39,47 @@
     tgScript.setAttribute("data-userpic", "false");
     tgScript.setAttribute("data-request-access", "write");
     tgScript.setAttribute("data-lang", "ru");
-    tgScript.setAttribute("data-auth-url", "");
     tgScript.setAttribute("data-on-auth", "onTelegramAuth");
 
     document.getElementById("tg-login").appendChild(tgScript);
 
-    // 3) Функция, выполняющаяся после логина
+    // ----------------------------
+    // 4) Callback после логина
+    // ----------------------------
     async function onTelegramAuth(user) {
         const payload = {
             nonce: nonce,
             telegramData: {
-                id: user.id.toString(),
-                first_name: user.first_name,
-                username: user.username,
-                auth_date: user.auth_date.toString(),
-                hash: user.hash
+                Id: user.id.toString(),
+                FirstName: user.first_name,
+                Username: user.username,
+                AuthDate: user.auth_date.toString(),
+                Hash: user.hash
             }
         };
 
-        const response = await fetch("/api/auth/verify", {
+        console.log("Sending payload:", payload);
+
+        const response = await fetch(`${API_URL}/api/auth/verify`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
         });
 
-        const json = await response.json();
+        let json;
+        try {
+            json = await response.json();
+        } catch (e) {
+            document.body.innerHTML = "<h3>Ошибка ответа сервера</h3>";
+            return;
+        }
+
         if (json.token) {
             document.body.innerHTML =
                 "<h2>Успех!</h2><p>Your JWT:</p><code>" + json.token + "</code>";
         } else {
-            document.body.innerHTML = "<h3>Ошибка авторизации</h3>";
+            document.body.innerHTML =
+                "<h3>Ошибка авторизации</h3><pre>" + JSON.stringify(json, null, 2) + "</pre>";
         }
     }
 </script>

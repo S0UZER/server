@@ -876,3 +876,4 @@ C:\Users\Bit\Desktop\server\obj\Debug\net8.0\TodoApi.genruntimeconfig.cache
 C:\Users\Bit\Desktop\server\obj\Debug\net8.0\ref\TodoApi.dll
 C:\Users\Bit\Desktop\server\bin\Debug\net8.0\TodoApi.staticwebassets.runtime.json
 C:\Users\User\Desktop\Сервер\server\bin\Debug\net8.0\TodoApi.staticwebassets.runtime.json
+C:\Users\User\Desktop\Сервер\server\bin\Debug\net8.0\Microsoft.AspNetCore.Authentication.JwtBearer.dll
