@@ -48,6 +48,16 @@ builder.Services
     .AddControllers()
     .AddNewtonsoftJson();
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
+
 // Регистрация сервисов
 builder.Services.AddSingleton<NonceStorage>();
 builder.Services.AddScoped<ITelegramService, TelegramService>();
@@ -71,6 +81,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseCors("AllowAll");
 
 app.UseMiddleware<RequestLoggingMiddleware>();
 

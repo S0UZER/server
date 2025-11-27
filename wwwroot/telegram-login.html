@@ -1,112 +1,300 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
 <head>
-    <meta charset="UTF-8" />
-    <title>Авторизация через Telegram</title>
+    <meta charset="UTF-8">
+    <title>Telegram Auth</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .status { margin: 20px 0; padding: 15px; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        code { background: #f8f9fa; padding: 10px; display: block; overflow-x: auto; font-family: 'Courier New', monospace; border-radius: 3px; }
+        button { padding: 12px 24px; margin: 10px 5px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; transition: background 0.3s; }
+        button:hover { background: #0056b3; }
+        button.secondary { background: #6c757d; }
+        button.secondary:hover { background: #545b62; }
+        .token-box { background: #e9ecef; padding: 15px; border-radius: 5px; margin: 15px 0; border: 1px solid #ced4da; }
+        .debug-info { background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 4px solid #007bff; }
+        h2 { color: #333; margin-bottom: 20px; }
+        h3 { color: #555; margin-top: 0; }
+    </style>
 </head>
-<body style="background:#111; color:white; font-family:sans-serif; padding:20px;">
-
-<h2>Авторизация через Telegram</h2>
-
-<div id="tg-login"></div>
-<div id="status"></div>
-
-<script>
-    // ----------------------------
-    // 1) Читаем nonce из URL
-    // ----------------------------
-    const url = new URL(window.location.href);
-    const nonce = url.searchParams.get("nonce");
-
-    if (!nonce) {
-        document.getElementById('status').innerHTML = "<h3 style='color:red'>Ошибка: нет nonce</h3>";
-        throw new Error("No nonce");
-    }
-
-    // ----------------------------
-    // 2) Конфиг
-    // ----------------------------
-    const API_URL = "https://droopingly-troughlike-dedra.ngrok-free.dev";
-
-    // ----------------------------
-    // 3) Подключаем Telegram Login Widget
-    // ----------------------------
-    function initTelegramWidget() {
-        const tgScript = document.createElement("script");
-        tgScript.src = "https://telegram.org/js/telegram-widget.js?22";
-        tgScript.async = true;
-        tgScript.setAttribute("data-telegram-login", "subopro_bot");
-        tgScript.setAttribute("data-size", "large");
-        tgScript.setAttribute("data-userpic", "true");
-        tgScript.setAttribute("data-request-access", "write");
-        tgScript.setAttribute("data-lang", "ru");
-        tgScript.setAttribute("data-on-auth", "onTelegramAuth");
-
-        document.getElementById("tg-login").appendChild(tgScript);
-    }
-
-    // ----------------------------
-    // 4) Callback после логина
-    // ----------------------------
-    async function onTelegramAuth(user) {
-        document.getElementById('status').innerHTML = "<p>Проверка авторизации...</p>";
+<body>
+    <div class="container">
+        <h2>🔐 Авторизация через Telegram</h2>
         
-        const payload = {
-            nonce: nonce,
-            telegramData: {
-                Id: user.id.toString(),
-                FirstName: user.first_name,
-                Username: user.username,
-                AuthDate: user.auth_date.toString(),
-                Hash: user.hash
-            }
-        };
+        <div class="debug-info">
+            <h3>Отладочная информация:</h3>
+            <div id="debug-info"></div>
+        </div>
 
-        console.log("Sending payload:", payload);
+        <div style="text-align: center; margin: 20px 0;">
+            <div id="tg-login"></div>
+        </div>
 
-        try {
-            const response = await fetch(`${API_URL}/api/auth/verify`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-            });
+        <div id="status"></div>
+        
+        <div style="margin-top: 30px; border-top: 2px solid #e9ecef; padding-top: 20px;">
+            <h3>🧪 Тестовые функции</h3>
+            <p style="color: #666; margin-bottom: 15px;">Если Telegram Widget не работает, используйте эти кнопки:</p>
+            
+            <button onclick="getSimpleToken()">🎯 Получить простой JWT токен</button>
+            <button onclick="testWithCurrentToken()" class="secondary">🧪 Протестировать с токеном</button>
+            <button onclick="clearAll()" class="secondary">🗑️ Очистить всё</button>
+        </div>
 
-            const json = await response.json();
+        <div id="token-display" style="display: none; margin-top: 20px;"></div>
+    </div>
 
-            if (json.token) {
-                document.getElementById('status').innerHTML = 
-                    "<h3 style='color:green'>✅ Успешная авторизация!</h3>" +
-                    "<p>Токен получен. Закройте это окно.</p>";
-                
-                // Отправляем токен в мобильное приложение
-                if (window.Android && window.Android.receiveToken) {
-                    // Для Android WebView
-                    window.Android.receiveToken(json.token);
-                } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.iosListener) {
-                    // Для iOS WKWebView
-                    window.webkit.messageHandlers.iosListener.postMessage({token: json.token});
-                } else {
-                    // Fallback: пытаемся открыть кастомную схему URL
-                    setTimeout(() => {
-                        window.location.href = `todoapp://auth?token=${encodeURIComponent(json.token)}`;
-                    }, 1000);
-                }
-            } else {
-                document.getElementById('status').innerHTML = 
-                    "<h3 style='color:red'>❌ Ошибка авторизации</h3>" +
-                    "<pre>" + JSON.stringify(json, null, 2) + "</pre>";
-            }
-        } catch (error) {
-            document.getElementById('status').innerHTML = 
-                "<h3 style='color:red'>❌ Ошибка сети</h3>" +
-                "<p>" + error.message + "</p>";
+    <script>
+        // Конфигурация
+        const API_URL = "https://07c62b281611cc.lhr.life";
+        const urlParams = new URLSearchParams(window.location.search);
+        const nonce = urlParams.get('nonce');
+
+        // Инициализация при загрузке
+        document.addEventListener('DOMContentLoaded', function() {
+            initDebugInfo();
+            initTelegramWidget();
+            loadStoredToken();
+        });
+
+        // Отладочная информация
+        function initDebugInfo() {
+            const debugInfo = document.getElementById('debug-info');
+            debugInfo.innerHTML = `
+                <p><strong>Nonce:</strong> <code>${nonce || 'NOT FOUND'}</code></p>
+                <p><strong>API URL:</strong> <code>${API_URL}</code></p>
+                <p><strong>Bot:</strong> subopro_bot</p>
+                <p><strong>Время:</strong> ${new Date().toLocaleString('ru-RU')}</p>
+                <p><strong>Статус:</strong> <span id="connection-status">Проверка...</span></p>
+            `;
+
+            // Проверка соединения
+            checkConnection();
         }
-    }
 
-    // Инициализация при загрузке
-    document.addEventListener('DOMContentLoaded', initTelegramWidget);
-</script>
+        // Проверка соединения с сервером
+        function checkConnection() {
+            fetch(API_URL + '/api/notifications/test')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('connection-status').innerHTML = 
+                        '<span style="color: green;">✅ Соединение установлено</span>';
+                })
+                .catch(error => {
+                    document.getElementById('connection-status').innerHTML = 
+                        '<span style="color: red;">❌ Ошибка соединения: ' + error.message + '</span>';
+                });
+        }
 
+        // Telegram Widget
+        function initTelegramWidget() {
+            const script = document.createElement('script');
+            script.src = "https://telegram.org/js/telegram-widget.js?22";
+            script.async = true;
+            script.setAttribute('data-telegram-login', 'subopro_bot');
+            script.setAttribute('data-size', 'large');
+            script.setAttribute('data-userpic', 'true');
+            script.setAttribute('data-request-access', 'write');
+            script.setAttribute('data-lang', 'ru');
+            script.setAttribute('data-auth-url', API_URL + '/api/auth/verify-callback');
+            
+            document.getElementById('tg-login').appendChild(script);
+            
+            console.log('Telegram Widget initialized');
+        }
+
+        // Получение простого токена (без nonce)
+        function getSimpleToken() {
+            showStatus('🔄 Получение простого токена...', 'info');
+            
+            fetch(API_URL + '/api/auth/simple-token', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('✅ Simple token response:', data);
+                if (data.token) {
+                    displayToken(data.token, data.telegramId, data.deviceId);
+                    showStatus('✅ Простой токен успешно получен!', 'success');
+                } else {
+                    showStatus('❌ Ошибка: токен не получен', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('❌ Error getting simple token:', error);
+                showStatus('❌ Ошибка получения токена: ' + error.message, 'error');
+            });
+        }
+
+        // Тестирование с текущим токеном
+        function testWithCurrentToken() {
+            const token = localStorage.getItem('jwt_token');
+            if (!token) {
+                showStatus('❌ Сначала получите токен!', 'error');
+                return;
+            }
+            
+            showStatus('🔄 Тестирование токена...', 'info');
+            
+            fetch(API_URL + '/api/secure/profile', {
+                headers: { 
+                    'Authorization': 'Bearer ' + token,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                showStatus('✅ Тест успешен! Токен работает.', 'success');
+                console.log('Profile response:', data);
+            })
+            .catch(error => {
+                showStatus('❌ Ошибка теста: ' + error.message, 'error');
+            });
+        }
+
+        // Отображение токена
+        function displayToken(token, telegramId, deviceId) {
+            localStorage.setItem('jwt_token', token);
+            
+            const tokenDisplay = document.getElementById('token-display');
+            tokenDisplay.style.display = 'block';
+            tokenDisplay.innerHTML = `
+                <div class="status success">
+                    <h3>🎉 JWT Токен получен!</h3>
+                    <p><strong>Telegram ID:</strong> ${telegramId}</p>
+                    <p><strong>Device ID:</strong> ${deviceId}</p>
+                    
+                    <div class="token-box">
+                        <strong>Ваш JWT Token:</strong>
+                        <code style="word-break: break-all; font-size: 12px;">${token}</code>
+                    </div>
+                    
+                    <p><strong>Используйте в заголовках:</strong></p>
+                    <code>Authorization: Bearer ${token}</code>
+                    
+                    <div style="margin-top: 15px;">
+                        <button onclick="copyToken()">📋 Скопировать токен</button>
+                        <button onclick="testNotification()" class="secondary">📨 Тест уведомления</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Копирование токена в буфер обмена
+        function copyToken() {
+            const token = localStorage.getItem('jwt_token');
+            if (token) {
+                navigator.clipboard.writeText(token).then(() => {
+                    showStatus('✅ Токен скопирован в буфер обмена!', 'success');
+                }).catch(err => {
+                    showStatus('❌ Ошибка копирования: ' + err, 'error');
+                });
+            }
+        }
+
+        // Тест отправки уведомления
+        function testNotification() {
+            const token = localStorage.getItem('jwt_token');
+            if (!token) {
+                showStatus('❌ Сначала получите токен!', 'error');
+                return;
+            }
+            
+            showStatus('🔄 Отправка тестового уведомления...', 'info');
+            
+            fetch(API_URL + '/api/notifications', {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + token,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    chatId: 123, // будет проигнорирован, используется telegram_id из токена
+                    message: '✅ Тестовое уведомление с JWT токеном! Время: ' + new Date().toLocaleString('ru-RU')
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus('✅ Уведомление отправлено успешно!', 'success');
+                } else {
+                    showStatus('❌ Ошибка отправки: ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                showStatus('❌ Ошибка сети: ' + error.message, 'error');
+            });
+        }
+
+        // Загрузка сохраненного токена
+        function loadStoredToken() {
+            const token = localStorage.getItem('jwt_token');
+            if (token) {
+                const tokenDisplay = document.getElementById('token-display');
+                tokenDisplay.style.display = 'block';
+                tokenDisplay.innerHTML = `
+                    <div class="status warning">
+                        <h3>📁 Найден сохраненный токен</h3>
+                        <p>Токен уже сохранен в localStorage.</p>
+                        <button onclick="getSimpleToken()">🔄 Получить новый токен</button>
+                        <button onclick="testWithCurrentToken()" class="secondary">🧪 Протестировать текущий</button>
+                    </div>
+                `;
+            }
+        }
+
+        // Очистка всего
+        function clearAll() {
+            localStorage.removeItem('jwt_token');
+            document.getElementById('token-display').style.display = 'none';
+            document.getElementById('status').innerHTML = '';
+            showStatus('✅ Все данные очищены', 'success');
+        }
+
+        // Показать статус
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+            
+            // Автоочистка успешных сообщений через 5 секунд
+            if (type === 'success') {
+                setTimeout(() => {
+                    if (statusDiv.innerHTML.includes(message)) {
+                        statusDiv.innerHTML = '';
+                    }
+                }, 5000);
+            }
+        }
+
+        // Глобальные обработчики ошибок
+        window.addEventListener('error', function(e) {
+            console.error('Global error:', e.error);
+            showStatus('❌ JavaScript ошибка: ' + e.message, 'error');
+        });
+
+        window.addEventListener('unhandledrejection', function(e) {
+            console.error('Unhandled promise rejection:', e.reason);
+            showStatus('❌ Ошибка Promise: ' + e.reason, 'error');
+        });
+    </script>
 </body>
 </html>
