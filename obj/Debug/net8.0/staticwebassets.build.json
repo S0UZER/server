@@ -1,6 +1,6 @@
 {
   "Version": 1,
-  "Hash": "jpj/7mJxbjyVP9xSZDV5vYIAPMKkHZqFOhA3El5mZmk=",
+  "Hash": "O+yMZUpuVN4Dxwgcv0Vz5+q9pVYXjrzk8bziWR6ZdqA=",
   "Source": "TodoApi",
   "BasePath": "_content/TodoApi",
   "Mode": "Default",
@@ -10,17 +10,17 @@
     {
       "Name": "TodoApi\\wwwroot",
       "Source": "TodoApi",
-      "ContentRoot": "C:\\Users\\Bit\\Desktop\\server\\server\\wwwroot\\",
+      "ContentRoot": "C:\\Users\\Bit\\Desktop\\server\\wwwroot\\",
       "BasePath": "_content/TodoApi",
       "Pattern": "**"
     }
   ],
   "Assets": [
     {
-      "Identity": "C:\\Users\\Bit\\Desktop\\server\\server\\wwwroot\\telegram-login.html",
+      "Identity": "C:\\Users\\Bit\\Desktop\\server\\wwwroot\\telegram-login.html",
       "SourceId": "TodoApi",
       "SourceType": "Discovered",
-      "ContentRoot": "C:\\Users\\Bit\\Desktop\\server\\server\\wwwroot\\",
+      "ContentRoot": "C:\\Users\\Bit\\Desktop\\server\\wwwroot\\",
       "BasePath": "_content/TodoApi",
       "RelativePath": "telegram-login.html",
       "AssetKind": "All",

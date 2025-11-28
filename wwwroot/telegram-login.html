@@ -52,12 +52,45 @@
 
     <script>
         // Конфигурация
-        const API_URL = "https://07c62b281611cc.lhr.life";
+        const API_URL = "https://71e9617e675edd.lhr.life";
         const urlParams = new URLSearchParams(window.location.search);
         const nonce = urlParams.get('nonce');
 
         // Инициализация при загрузке
         document.addEventListener('DOMContentLoaded', function() {
+            initDebugInfo();
+            initTelegramWidget();
+            loadStoredToken();
+        });
+
+        // Функция для проверки параметров URL после редиректа
+        function checkUrlParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('token');
+            const telegramId = urlParams.get('telegramId');
+            const deviceId = urlParams.get('deviceId');
+            const success = urlParams.get('success');
+            const error = urlParams.get('error');
+
+            console.log('URL Params:', { token, telegramId, deviceId, success, error });
+
+            if (token && telegramId) {
+                displayToken(token, telegramId, deviceId);
+                showStatus('✅ Авторизация через Telegram успешна!', 'success');
+                
+                // Очистить URL от параметров
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+
+            if (error) {
+                showStatus('❌ Ошибка авторизации: ' + error, 'error');
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        }
+
+        // Обновите инициализацию
+        document.addEventListener('DOMContentLoaded', function() {
+            checkUrlParams(); // Добавьте эту строку ПЕРВОЙ
             initDebugInfo();
             initTelegramWidget();
             loadStoredToken();
@@ -102,11 +135,22 @@
             script.setAttribute('data-userpic', 'true');
             script.setAttribute('data-request-access', 'write');
             script.setAttribute('data-lang', 'ru');
-            script.setAttribute('data-auth-url', API_URL + '/api/auth/verify-callback');
+            
+            // Добавляем nonce в URL если он есть
+            let authUrl = API_URL + '/api/auth/telegram-callback';
+            if (nonce) {
+                authUrl += '?nonce=' + nonce;
+            }
+            
+            script.setAttribute('data-auth-url', authUrl);
+            
+            script.onload = function() {
+                console.log('Telegram Widget loaded with auth URL:', authUrl);
+            };
             
             document.getElementById('tg-login').appendChild(script);
             
-            console.log('Telegram Widget initialized');
+            console.log('Telegram Widget initialized with URL:', authUrl);
         }
 
         // Получение простого токена (без nonce)
@@ -173,7 +217,13 @@
 
         // Отображение токена
         function displayToken(token, telegramId, deviceId) {
+            console.log('Displaying token:', { token, telegramId, deviceId });
+            
             localStorage.setItem('jwt_token', token);
+            localStorage.setItem('telegram_id', telegramId);
+            if (deviceId) {
+                localStorage.setItem('device_id', deviceId);
+            }
             
             const tokenDisplay = document.getElementById('token-display');
             tokenDisplay.style.display = 'block';
@@ -181,22 +231,29 @@
                 <div class="status success">
                     <h3>🎉 JWT Токен получен!</h3>
                     <p><strong>Telegram ID:</strong> ${telegramId}</p>
-                    <p><strong>Device ID:</strong> ${deviceId}</p>
+                    <p><strong>Device ID:</strong> ${deviceId || 'N/A'}</p>
                     
                     <div class="token-box">
-                        <strong>Ваш JWT Token:</strong>
-                        <code style="word-break: break-all; font-size: 12px;">${token}</code>
+                        <strong>Ваш JWT Token (первые 50 символов):</strong>
+                        <code style="word-break: break-all; font-size: 12px;">${token.substring(0, 50)}...</code>
                     </div>
                     
-                    <p><strong>Используйте в заголовках:</strong></p>
-                    <code>Authorization: Bearer ${token}</code>
+                    <p><strong>Полный токен сохранен в localStorage</strong></p>
                     
                     <div style="margin-top: 15px;">
                         <button onclick="copyToken()">📋 Скопировать токен</button>
-                        <button onclick="testNotification()" class="secondary">📨 Тест уведомления</button>
+                        <button onclick="testWithCurrentToken()" class="secondary">🧪 Протестировать токен</button>
+                        <button onclick="showFullToken()" class="secondary">👁️ Показать полный токен</button>
                     </div>
                 </div>
             `;
+        }
+
+        function showFullToken() {
+            const token = localStorage.getItem('jwt_token');
+            if (token) {
+                alert('Полный токен:\n\n' + token);
+            }
         }
 
         // Копирование токена в буфер обмена
@@ -243,6 +300,16 @@
             .catch(error => {
                 showStatus('❌ Ошибка сети: ' + error.message, 'error');
             });
+        }
+
+        function checkCurrentToken() {
+            const token = localStorage.getItem('jwt_token');
+            if (token) {
+                showStatus('✅ Токен найден в localStorage', 'success');
+                console.log('Current token:', token);
+            } else {
+                showStatus('❌ Токен не найден в localStorage', 'error');
+            }
         }
 
         // Загрузка сохраненного токена

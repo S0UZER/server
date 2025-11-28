@@ -203,6 +203,112 @@ namespace TodoApi.Controllers
             }
         }
 
+        // -------------------------
+        // GET endpoint для Telegram Widget
+        // -------------------------
+        [HttpGet("telegram-callback")]
+        public IActionResult TelegramCallback(
+            [FromQuery] string id,
+            [FromQuery] string first_name, 
+            [FromQuery] string username,
+            [FromQuery] string photo_url,
+            [FromQuery] string auth_date,
+            [FromQuery] string hash)
+        {
+            try
+            {
+                _logger.LogInformation("=== 🔐 TELEGRAM CALLBACK STARTED ===");
+                _logger.LogInformation("📱 User Data: ID={UserId}, Name={FirstName}, Username={Username}", 
+                    id, first_name, username);
+                _logger.LogInformation("📅 Auth date: {AuthDate}, Hash: {Hash}", auth_date, hash);
+                
+                // Логируем ВСЕ query параметры
+                _logger.LogInformation("🔍 All query parameters:");
+                foreach (var query in Request.Query)
+                {
+                    _logger.LogInformation("   {Key} = {Value}", query.Key, query.Value);
+                }
+
+                // Парсим nonce из URL
+                var nonce = Request.Query["nonce"].FirstOrDefault();
+                _logger.LogInformation("🔑 Nonce from URL: {Nonce}", nonce ?? "NULL");
+                
+                string deviceId;
+                if (!string.IsNullOrEmpty(nonce))
+                {
+                    // Если есть nonce, используем привязанный deviceId
+                    if (!_nonceStorage.TryGet(nonce, out deviceId))
+                    {
+                        _logger.LogWarning("❌ Invalid nonce in Telegram callback: {Nonce}", nonce);
+                        return BadRequest("Invalid or expired nonce");
+                    }
+                    _nonceStorage.Remove(nonce);
+                    _logger.LogInformation("✅ Valid nonce found, DeviceId: {DeviceId}", deviceId);
+                }
+                else
+                {
+                    // Если нет nonce, генерируем временный deviceId
+                    deviceId = "web_" + Guid.NewGuid().ToString("N")[..8];
+                    _logger.LogWarning("⚠️ No nonce provided, generated DeviceId: {DeviceId}", deviceId);
+                }
+
+                // Генерируем JWT токен
+                _logger.LogInformation("🔨 Generating JWT token...");
+                var jwt = GenerateJwt(id, deviceId);
+                _logger.LogInformation("✅ JWT token generated successfully");
+
+                // Получаем URL для редиректа из конфига
+                var frontendUrl = _config["Frontend:Url"] ?? "https://71e9617e675edd.lhr.life";
+                _logger.LogInformation("🌐 Frontend URL: {FrontendUrl}", frontendUrl);
+                
+                // Редирект с токеном в параметрах URL
+                var redirectUrl = $"{frontendUrl}/telegram-login.html?token={jwt}&telegramId={id}&deviceId={deviceId}&success=true";
+                
+                _logger.LogInformation("🔄 Redirecting to: {RedirectUrl}", redirectUrl);
+                _logger.LogInformation("=== ✅ TELEGRAM CALLBACK COMPLETED ===");
+                
+                return Redirect(redirectUrl);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "=== ❌ TELEGRAM CALLBACK FAILED ===");
+                
+                var frontendUrl = _config["Frontend:Url"] ?? "https://71e9617e675edd.lhr.life";
+                var errorRedirectUrl = $"{frontendUrl}/telegram-login.html?error=auth_failed&message={ex.Message}";
+                
+                _logger.LogInformation("🔄 Redirecting to error page: {ErrorRedirectUrl}", errorRedirectUrl);
+                
+                return Redirect(errorRedirectUrl);
+            }
+        }
+
+        [HttpGet("debug-logs")]
+public IActionResult DebugLogs()
+{
+    try
+    {
+        _logger.LogInformation("=== 🧪 DEBUG LOGS ENDPOINT CALLED ===");
+        _logger.LogInformation("🕒 Time: {Time}", DateTime.UtcNow);
+        _logger.LogInformation("🌐 Server: {Server}", _config["Server:PublicUrl"]);
+        _logger.LogInformation("📱 Frontend: {Frontend}", _config["Frontend:Url"]);
+        
+        // Убираем вызов GetCount или заменим на что-то другое
+        _logger.LogInformation("🔑 Nonce Storage: Active (implementation details hidden)");
+        
+        return Ok(new { 
+            message = "Debug logs written to server",
+            timestamp = DateTime.UtcNow,
+            server = _config["Server:PublicUrl"],
+            frontend = _config["Frontend:Url"],
+            status = "Server is running"
+        });
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "❌ Error in debug logs endpoint");
+        return StatusCode(500, new { error = ex.Message });
+    }
+}
         [HttpGet("debug-nonce/{nonce}")]
         public IActionResult DebugNonce(string nonce)
         {
