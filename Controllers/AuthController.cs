@@ -258,7 +258,7 @@ namespace TodoApi.Controllers
                 _logger.LogInformation("✅ JWT token generated successfully");
 
                 // Получаем URL для редиректа из конфига
-                var frontendUrl = _config["Frontend:Url"] ?? "https://71e9617e675edd.lhr.life";
+                var frontendUrl = _config["Frontend:Url"] ?? "https://2ca7618e23c1aa.lhr.life";
                 _logger.LogInformation("🌐 Frontend URL: {FrontendUrl}", frontendUrl);
                 
                 // Редирект с токеном в параметрах URL
@@ -273,7 +273,7 @@ namespace TodoApi.Controllers
             {
                 _logger.LogError(ex, "=== ❌ TELEGRAM CALLBACK FAILED ===");
                 
-                var frontendUrl = _config["Frontend:Url"] ?? "https://71e9617e675edd.lhr.life";
+                var frontendUrl = _config["Frontend:Url"] ?? "https://2ca7618e23c1aa.lhr.life";
                 var errorRedirectUrl = $"{frontendUrl}/telegram-login.html?error=auth_failed&message={ex.Message}";
                 
                 _logger.LogInformation("🔄 Redirecting to error page: {ErrorRedirectUrl}", errorRedirectUrl);
